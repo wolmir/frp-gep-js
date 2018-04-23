@@ -1,0 +1,12 @@
+    pop: pop.pop.filter(i => i.hp <= config.death_score)
+    pop: _.range(config.initial_pop_size)
+        const chromo = gepm.random(config.number_of_chromossomes, config.head_length, config.genes_per_chromossome)
+  const terms = _.range(config.number_of_sensors).map(B.bus)
+  const pheno = gepm.translate(chromo, terms, config.head_length) // 036181957607076
+    hp: config.initial_score,
+    head_length: config.head_length
+  return (pop.time >= config.max_time && !bestScore())
+    return pop.pop.filter(i => i.hp >= config.max_score).length > 0
+    cc = individual(config, gepm.mutate(c1.chromo, config.mutation_rate, config.head_length))
+    cc = individual(config, gepm.mutate(c2.chromo, config.mutation_rate, config.head_length))
+    const chromo = gepm.random(config.number_of_chromossomes, config.head_length, config.genes_per_chromossome)

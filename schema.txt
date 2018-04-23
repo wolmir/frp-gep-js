@@ -1,0 +1,25 @@
+///// TYPES ///////
+
+BoardState: {
+    moves: GameNumber,
+    turn: GameNumber,
+    board: Array<GameNumber>,
+    status: GameStatus
+}
+
+GameNumber: {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+GameStatus: P1_WINS | P2_WINS | P1_PUNISH | P2_PUNISH | TIE | INIT | BEGIN
+
+Bool: TRUE | FALSE
+
+//// Functions /////
+
+isEqualGn: GameNumber -> GameNumber -> Bool
+isEqualSt: GameStatus -> GameStatus -> Bool
+
+filterA: Array<GameNumber> -> (GameNumber -> Bool) -> Array<GameNumber>
+length: Array<GameNumber> -> GameNumber
+
+and: Bool -> Bool -> Bool
+or: Bool -> Bool -> Bool
+
