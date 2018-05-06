@@ -8,6 +8,16 @@ const prompt = require('prompt-sync')({ sigint: true })
 const next_gen = next_gen_1
 const kill_old = kill_old_1
 const best_fit = best_fit_1
+const shp = shp1
+
+/**
+ * Debugging util
+ */
+function shp1 (pop) {
+  return pop.pop.map(i => i.hp)
+}
+
+
 
 /**
  * Returns an initial config
@@ -25,11 +35,12 @@ function gepm_config () {
     number_of_sensors: 20,
     initial_score: 1,
     max_time: 2 ** 20, // 2018043732966988
-    max_score: 10 ** 9,
+    max_score: 10**10,
     max_pop: 30,
     mutation_rate: 0.05,
     tourney_size: 20,
     death_count: 16,
+    max_death_count: 25,
     spawn_number: 8,
     death_score_step: 0.016
   }
@@ -45,27 +56,49 @@ function gepm_config () {
 function run (fitness, config) {
   var pop = initial_pop(config)
 
-  while (not_finished(config, pop)) {
+  var bfn
+
+  while (not_finished(config, bfn)) {
+    // debugger
     pop = update_world(fitness, pop)
 
     // Mating season. It's based on population numbers
     // so that every individual had a chance to prove itself.
+    const pl = pop.pop.length
+
     pop = kill_old(config, pop)
+
+    if (pop.pop.length !== pl) {
+      bfn = best_fit(config, pop)
+
+      // console.log(pop.time, bfn.hp)
+      console.log(_.sortBy(pop.pop.map(i => i.hp)).map(n => n.toFixed(2)).join(' '))
+      console.log()
+    }
 
     pop = next_gen(config, pop)
 
-    if (pop.time % 1024 === 0) {
-      // debugger
-      const bf = best_fit(config, pop)
-      console.log(pop.time, bf.hp / (bf.age || 1), bf.age, config.death_score)
-    }
+    // if (pop.time % 1024 === 0) {
+    //   // debugger
+    //   console.log(pop.time, bfn.hp)
+    // }
 
     // if (pop.time === 1000) {
     //   debugger
     // }
   }
 
-  return best_fit(config, pop)
+  return bfn
+}
+
+/**
+ * Returns a genetic diversity indicator
+ *
+ * @param {Array} pop
+ * @returns {Number}
+ */
+function gen_div (pop) {
+  return Object.keys(_.groupBy(pop, 'id')).length
 }
 
 /**
@@ -81,14 +114,7 @@ function best_fit_1 (config, pop) {
       return value
     }
 
-    if (value.age < 2) {
-      return acc
-    }
-
-    const avgv = value.hp / value.age
-    const avgc = acc.hp / (acc.age || 1)
-
-    if (avgv > avgc) {
+    if (value.hp > acc.hp) {
       return value
     }
 
@@ -117,25 +143,28 @@ function kill_old_1 (config, pop) {
   // }
 
   // return new_pop
-  if (pop.time % (config.max_pop * 4) === 0) {
-    debugger
+  if (pop.time % (config.max_pop * 8) === 0) {
     var new_pop = pop.pop
+    var death_count = config.death_count
+
+    const gd = gen_div(new_pop)
+
+    console.log(gd)
+
+    if (gd <= 4) {
+      death_count = config.max_death_count
+    }
 
     var w = 0
-    for (w = 0; w < config.death_count; w++) {
+    for (w = 0; w < death_count; w++) {
       var dc = _.sample(new_pop)
 
       var i
       for (i = 0; i < config.tourney_size; i++) {
         var dcc = _.sample(new_pop)
 
-        if (dcc.age > 1) {
-          const p1avg = dc.hp / (dc.age || 1)
-          const p2avg = dcc.hp / dcc.age
-
-          if (p1avg > p2avg) {
-            dc = dcc
-          }
+        if (dcc.hp < dc.hp) {
+          dc = dcc
         }
       }
 
@@ -198,11 +227,13 @@ function individual (config, chromo) {
   const pheno = gepm.translate(chromo, terms, config.head_length) // 036181957607076
   // 036181961191109
   return {
+    id: _.range(3).map(() => _.sample('abcdefghijklmnopqrstuvwxyz'.split(''))).join(''),
     chromo: chromo,
     terms: terms,
     pheno: pheno,
     hp: config.initial_score,
-    age: 0,
+    enemies: [],
+    values: [],
     head_length: config.head_length
   }
 }
@@ -211,11 +242,11 @@ function individual (config, chromo) {
  * Returns true if the population is not in it's final state
  *
  * @param {GepmConfig} config
- * @param {Population} pop
+ * @param {Individual} bfn
  * @returns {Boolean}
  */
-function not_finished (config, pop) {
-  return (pop.time < config.max_time)
+function not_finished (config, bfn) {
+  return _.isUndefined(bfn) || (bfn.hp < config.max_score)
 
   /**
    * Returns true if an individual with the best score is present.
@@ -238,16 +269,27 @@ function update_world (fitness, pop) {
   const p1 = new_pop[0]
   const p2 = new_pop[1]
 
-  new_pop = new_pop.slice(2).concat(fitness(age(p1), age(p2)))
+  new_pop = new_pop.slice(2).concat(fitness(p1, p2))
 
   return Object.assign({}, pop, {
     time: pop.time + 1,
-    pop: new_pop.map(i => i.age > 30 ? reset_age(i) : i)
+    pop: new_pop
   })
 }
 
-function reset_age (i) {
-  return _.assign({}, i, { age: 1, hp: i.hp / i.age })
+
+/**
+ * Calculates the weighted mean
+ *
+ * @param {Array} values
+ * @param {Array} weights
+ * @returns {Number}
+ */
+function weighted_mean (values, weights) {
+  const sv = _.sum(_.zip(values, weights).map(p => p[0] * p[1]))
+  const sw = _.sum(weights)
+
+  return sv / (sw || 1)
 }
 
 
@@ -270,47 +312,48 @@ function age (i) {
  * @returns {Population}
  */
 function next_gen_1 (config, pop) {
-  if (pop.time % (config.max_pop * 4) === 0) {
+  if (pop.time % (config.max_pop * 8) === 0) {
      if (pop.pop.length >= config.max_pop) {
       return pop
     }
 
-    var new_pop = pop.pop
+    debugger
 
-    var w = 0
-    while (new_pop.length < config.max_pop) {
-      var wc = _.sample(new_pop)
-      var i = 0
-      for (i = 0; i < config.tourney_size; i++) {
-        var ni = _.sample(new_pop)
+    var new_pop = pop.pop.concat(pop.pop.map(function (i) {
+      const nind = individual(config, gepm.mutate(i.chromo, config.mutation_rate, config.head_length))
 
-        if (ni.age > 0) {
-          if (wc.age < 2) {
-            wc = ni
-          } else {
-            const avgni = ni.hp / ni.age
-            const avgwc = wc.hp / wc.age
+      nind.id = i.id // For tracking
 
-            if (avgni > avgwc) {
-              wc = ni
-            }
-          }
-        }
-      }
+      return nind
+    }))
 
-      const cc = individual(config, gepm.mutate(wc.chromo, config.mutation_rate, config.head_length))
+    if (new_pop.length < config.max_pop) {
+      const ldiff = config.max_pop - new_pop.length
 
-      // This is for genetic diversity
-      const chromo = gepm.random(config.number_of_chromossomes, config.head_length, config.genes_per_chromossome)
-      const gnc = individual(config, chromo)
-
-      new_pop = new_pop.concat([cc, gnc])
+      new_pop = new_pop.concat(_.range(ldiff).map(() => individual(config, gepm.random(config.number_of_chromossomes, config.head_length, config.genes_per_chromossome))))
     }
 
-    return _.assign({}, pop, { pop: new_pop })
+    return _.assign({}, pop, { pop: reset_hp(new_pop) })
   }
 
   return pop
+}
+
+
+/**
+ * Resets the hp data of each individual
+ *
+ * @param {Array}
+ * @returns {Array}
+ */
+function reset_hp (pop) {
+  return pop.map(function (i) {
+    return _.assign({}, i, {
+      enemies: [i.hp],
+      values: [i.hp],
+      hp: i.hp
+    })
+  })
 }
 
 
@@ -415,7 +458,18 @@ function tic_tac (i1, i2) {
 function tic_tac2 (i1, i2) {
   var board = new_board()
 
-  var p1 = _.assign({}, i1), p2 = _.assign({}, i2)
+  const enemies1 = i1.enemies.concat([i2.hp])
+  const enemies2 = i2.enemies.concat([i1.hp])
+
+  var p1 = _.assign({}, i1, {
+    tmp_score: 0,
+    enemies: enemies1
+  })
+
+  var p2 = _.assign({}, i2, {
+    tmp_score: 0,
+    enemies: enemies2
+  })
 
   var winner, loser, tie = false, phase = 0
 
@@ -470,14 +524,41 @@ function tic_tac2 (i1, i2) {
   }
 
   if (tie) {
-    return [one_up(p1, 10 ** 9), one_up(p2, 10 ** 9)]
+    return [calc_hp(one_up(p1, 10 ** 9)), calc_hp(one_up(p2, 10 ** 9))]
   }
 
   if (winner === undefined) {
-    return [p1, p2]
+    return [calc_hp(p1), calc_hp(p2)]
   }
 
-  return [one_up(winner, 10 ** 10), loser]
+  return [calc_hp(one_up(winner, 10 ** 10)), calc_hp(loser)]
+}
+
+
+/**
+ * Calculates the weighted mean of the matches.
+ *
+ * @param {Individual} i
+ * @returns {Individual}
+ */
+function calc_hp (i) {
+  var scores = i.values.concat([i.tmp_score])
+
+  return _.assign({}, i, {
+    values: scores,
+    hp: weighted_mean(scores, i.enemies)
+  })
+}
+
+/**
+ * Caps an array at the length
+ *
+ * @param {Array} a
+ * @param {Number} l
+ * @returns {Array}
+ */
+function cap (a, l) {
+  return a.length > l ? a.slice(a.length - l) : a
 }
 
 
@@ -519,7 +600,9 @@ function print_board (board) {
  * @returns {Individual}
  */
 function one_up (ind, amt) {
-  return _.assign({}, ind, { hp: ind.hp + (amt || 1) })
+  return _.assign({}, ind, {
+    tmp_score: ind.tmp_score + (amt || 1)
+  })
 }
 
 /**
@@ -530,7 +613,9 @@ function one_up (ind, amt) {
  * @returns {Individual}
  */
 function one_down (ind, amt) {
-  return _.assign({}, ind, { hp: ind.hp - (amt || 1) })
+  return _.assign({}, ind, {
+    tmp_score: ind.tmp_score - (amt || 1)
+  })
 }
 
 /**
@@ -701,21 +786,12 @@ const bf = run(tic_tac2, root_config)
 
 // const chromo = gepm.random(config.number_of_chromossomes, config.head_length, config.genes_per_chromossome)
 
-console.log('Best fit, with final score of ', bf.hp / bf.age, ' and age ', bf.age)
+console.log('Best fit, with final score of ', bf.hp, ' and age ', bf.age)
 
 var play_again = true
 
 while (play_again) {
-  tic_tac2(bf, { human: true })
+  tic_tac2(bf, { human: true, enemies: [], values: [] })
 
   play_again = prompt('Play again? ') === 'y'
-}
-
-
-
-/**
- * Debugging util
- */
-function shp(pop) {
-  return pop.pop.map(i => i.hp)
 }
