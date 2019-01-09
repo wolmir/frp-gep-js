@@ -13,10 +13,12 @@
   "dependencies": {
     "baconjs": "^2.0.5",
     "lodash": "^4.17.5",
-    "prompt-sync": "^4.1.6"
+    "prompt-sync": "^4.1.6",
+    "pyoo.js": "^2.2.1"
   },
   "devDependencies": {
     "jasmine": "^3.0.0",
+    "jsdoc": "^3.5.5",
     "standard": "^11.0.1"
   }
 }
